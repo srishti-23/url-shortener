@@ -23,4 +23,5 @@ async function getAnalytics(req,res){
     })
 
 }
+
 module.exports = generateNewUrl,getAnalytics;
