@@ -1,10 +1,15 @@
 const express = require('express');
 const urlRouter = require('./routes/url');
-const { mongoDbConnect } = require('./db');
+const { mongoDbConnect } = require('./config/db');
+const bodyParser = require('body-parser');
+const authRoutes = require('./routes/authRoutes')
 const URL = require('./models/url');
 
 const app = express();
+
 app.use(express.json());
+app.use(bodyParser.json());
+app.use('/auth', authRoutes);
 
 mongoDbConnect('mongodb://localhost:27017/urlShortener')
     .then(() => console.log('MongoDB connected'))
@@ -12,7 +17,7 @@ mongoDbConnect('mongodb://localhost:27017/urlShortener')
 
 const PORT = 8000;
 
-app.use('/url', urlRouter);
+app.use('/api', urlRouter);
 
 app.get('/:shortId', async (req, res) => {
     const shortId = req.params.shortId;
