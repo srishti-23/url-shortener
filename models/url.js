@@ -1,4 +1,11 @@
 const mongoose = require("mongoose");
+const visitHistorySchema= new mongoose.Schema({
+  timestamp: { type: Date, default: Date.now },
+ osName: { type: String, required: true },
+  deviceName: { type: String, required: true },
+  userId: { type: String, required: true },
+  action: { type: String },
+})
 
 const urlSchema = new mongoose.Schema(
   {
@@ -22,12 +29,8 @@ const urlSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    visitHistory: [
-      {
-        timestamp: { type: Date, required: true },
-        action: { type: String },
-      },
-    ],
+    visitHistory:[visitHistorySchema]
+    ,
   },
   { timestamps: true }
 );

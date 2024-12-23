@@ -28,6 +28,9 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use("/auth", authRoutes);
 app.use("/api", urlRouter);
+app.get("/", (req, res) => {
+  res.status(200).send("Welcome to url shortener");
+});
 
 connectDB();
 
