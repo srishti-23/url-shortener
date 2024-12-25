@@ -1,6 +1,11 @@
 const express = require("express");
 const passport = require("passport");
 const router = express.Router();
+const jwt = require("jsonwebtoken");
+
+const generateToken = (user) => {
+  return jwt.sign({ id: user._id, name: user.name, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1d" });
+};
 
 // Google Sign-In Route
 router.get(
@@ -9,12 +14,18 @@ router.get(
 );
 
 
-router.get(
-  "/google/callback",
-  passport.authenticate("google", { failureRedirect: "/" }),
+router.get('/google/callback',
+  passport.authenticate('google', { failureRedirect: '/' }),
   (req, res) => {
-    res.status(200).json({ message: "Authentication successful", user: req.user });
-  })
+    const token = generateToken(req.user);
+    res.json({
+      message: "Authentication successful",
+      token: token
+    });
+  }
+);
+
+module.exports = router;
 // );
 // router.get("/auth/google/callback", async (req, res) => {
 //   const { code } = req.query;
