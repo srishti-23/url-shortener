@@ -1,7 +1,8 @@
 // Ensure generateNewUrl and getAnalytics are defined and exported
 const URL = require("../models/url");
 const userAgent = require("useragent");
-const os = require("os");
+const os= require("os")
+
 
 async function generateNewUrl(req, res) {
   const { nanoid } = await import("nanoid");
@@ -111,8 +112,6 @@ async function redirectShortUrl(req, res) {
   }
 }
 
-
-
 async function getAnalytics(req, res) {
   const { alias } = req.params;
 
@@ -165,6 +164,24 @@ async function getAnalytics(req, res) {
       uniqueUsers: data.uniqueUsers.size,
     }));
 
+    // Device type analytics
+    const deviceTypeMap = {};
+    visitHistory.forEach((visit) => {
+      if (visit.deviceType) {
+        if (!deviceTypeMap[visit.deviceType]) {
+          deviceTypeMap[visit.deviceType] = { uniqueClicks: 0, uniqueUsers: new Set() };
+        }
+        deviceTypeMap[visit.deviceType].uniqueClicks += 1;
+        deviceTypeMap[visit.deviceType].uniqueUsers.add(visit.userId);
+      }
+    });
+
+    const deviceType = Object.entries(deviceTypeMap).map(([deviceName, data]) => ({
+      deviceName,
+      uniqueClicks: data.uniqueClicks,
+      uniqueUsers: data.uniqueUsers.size,
+    }));
+
     // Server OS Details using os module
     const serverDetails = {
       platform: os.platform(), // OS platform
@@ -181,6 +198,7 @@ async function getAnalytics(req, res) {
       uniqueClicks,
       clicksByDate,
       osType,
+      deviceType,
       serverDetails,
     });
   } catch (error) {
@@ -188,6 +206,8 @@ async function getAnalytics(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
+
+
 
 
 async function getTopicBasedAnalytics(req, res) {

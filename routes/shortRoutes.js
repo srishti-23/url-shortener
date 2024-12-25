@@ -1,11 +1,9 @@
 const express = require("express");
-const URL = require("../models/url");
+const URL = require("../models/url")
 const redis = require("../config/redis");
 const router = express.Router();
-
-// Ensure the correct import path for the controllers
+const ensureAuthenticated = require("../middleware/authmiddleware")
 const { generateNewUrl, getAnalytics ,redirectShortUrl,getTopicBasedAnalytics,getOverallAnalytics} = require("../controllers/url");
-
 const rateLimit = require("express-rate-limit");
 
 const limiter = rateLimit({
@@ -56,10 +54,11 @@ const limiter = rateLimit({
 // });
 
 // Analytics Route
-router.route("/shorten").post(limiter, generateNewUrl)
+// router.route("/shorten").post(limiter,  ensureAuthenticated,generateNewUrl)
+router.route("/shorten").post(ensureAuthenticated,generateNewUrl)
 router.get('/shorten/:customAlias', redirectShortUrl);
-router.get("/analytics/:alias", getAnalytics); // Ensure getAnalytics is passed correctly
-router.get("/analytics/topic/:topic", getTopicBasedAnalytics); // Ensure getAnalytics is passed correctly
-router.get("/analytic/overall", getOverallAnalytics); // Ensure getAnalytics is passed correctly
+router.get("/analytics/:alias", ensureAuthenticated, getAnalytics); 
+router.get("/analytics/topic/:topic", ensureAuthenticated, getTopicBasedAnalytics); 
+router.get("/analytic/overall", ensureAuthenticated, getOverallAnalytics); 
 
 module.exports = router;
