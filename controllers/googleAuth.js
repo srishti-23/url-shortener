@@ -9,7 +9,7 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "http://localhost:8000/google/callback" ||"https://url-shortener-iv7h.onrender.com/google/callback",
+      callbackURL: "https://url-shortener-iv7h.onrender.com/google/callback",
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
