@@ -31,6 +31,10 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use("/", authRoutes);
 app.use("/api", urlRouter);
+app.get("/api/docs", (req, res) => {
+  res.json({ documentation_url: process.env.API_DOC_URL });
+});
+
 
 connectDB();
 if (require.main === module) {
