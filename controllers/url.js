@@ -2,6 +2,7 @@
 const URL = require("../models/url");
 const userAgent = require("useragent");
 const os= require("os")
+const redis= require('../config/redis')
 
 
 async function generateNewUrl(req, res) {
@@ -41,40 +42,17 @@ async function generateNewUrl(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
-// async function redirectShortUrl(req, res) {
-//   const { customAlias } = req.params;
-//   try {
-//     const result = await URL.findOne({ customAlias });
-//     console.log("Alias founded", result);
-//     if (!result) {
-//       return res.status(404).json({ message: "ALias not found" });
-//     }
-//     const ua = userAgent.parse(req.headers["user-agent"]);
-//     console.log("Parsed User-Agent:", ua);
-//     console.log("OS Name:", ua.os.name);
-//     console.log("Device Type:", ua.device.type);
-//     // const osName = ua.os.name || "Unknown";
-//     // const deviceName = ua.device.type || "Unknown";
-//     result.visitHistory.push({
-//       timestamp: new Date(),
-//       osName,
-//       deviceName,
-//       userId: req.user?.id || "anonymous",
-//       action: "redirect",
-//     });
-//     result.totalClicks += 1; // Increment totalClicks
-//     await result.save();
-//     console.log("Updated totalClicks:", result.totalClicks);
-//     return res.redirect(result.longUrl);
-//   } catch (error) {
-//     // Handle server error
-//     console.error("Error while searching for alias:", error);
-//     return res.status(500).json({ message: "Internal Server Error" });
-//   }
-// }
 async function redirectShortUrl(req, res) {
   const { customAlias } = req.params;
   try {
+    const cachedLongUrl = await redis.get(customAlias); // Fetch from Redis cache
+    if (cachedLongUrl) {
+      console.log("Cache hit");
+      return res.redirect(cachedLongUrl);
+    }
+
+    // Fetch from MongoDB if not in cache
+    console.log("Cache miss");
     const result = await URL.findOne({ customAlias });
     console.log("Alias found:", result);
 
@@ -105,33 +83,131 @@ async function redirectShortUrl(req, res) {
     await result.save();
 
     console.log("Updated totalClicks:", result.totalClicks);
+    await redis.set(shortUrl, urlData.longUrl, "EX", 3600)
     return res.redirect(result.longUrl);
   } catch (error) {
     console.error("Error while searching for alias:", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 }
+// async function getAnalytics(req, res) {
+//   const { alias } = req.params;
+
+//   try {
+//     // Find the URL with the given alias
+//     const result = await URL.findOne({ customAlias: alias });
+
+//     if (!result) {
+//       return res.status(404).json({ message: "URL not found" });
+//     }
+
+//     const visitHistory = result.visitHistory || []; 
+//     const totalClicks = visitHistory.length;
+
+   
+//     const uniqueClicks = new Set(
+//       visitHistory.map((visit) => visit.userId).filter(Boolean) 
+//     ).size;
+
+  
+//     const today = new Date();
+//     const recent7Days = Array.from({ length: 7 }, (_, i) => {
+//       const date = new Date(today);
+//       date.setDate(today.getDate() - i);
+//       return date.toISOString().split("T")[0];
+//     });
+
+//     const clicksByDate = recent7Days.map((date) => ({
+//       date,
+//       clickCount: visitHistory.filter(
+//         (visit) => visit.date && visit.date.startsWith(date) 
+//       ).length,
+//     }));
+
+   
+//     const osTypeMap = {};
+//     visitHistory.forEach((visit) => {
+//       if (visit.osName) {
+//         if (!osTypeMap[visit.osName]) {
+//           osTypeMap[visit.osName] = { uniqueClicks: 0, uniqueUsers: new Set() };
+//         }
+//         osTypeMap[visit.osName].uniqueClicks += 1;
+//         osTypeMap[visit.osName].uniqueUsers.add(visit.userId);
+//       }
+//     });
+
+//     const osType = Object.entries(osTypeMap).map(([osName, data]) => ({
+//       osName,
+//       uniqueClicks: data.uniqueClicks,
+//       uniqueUsers: data.uniqueUsers.size,
+//     }));
+
+//     // Device type analytics
+//     const deviceTypeMap = {};
+//     visitHistory.forEach((visit) => {
+//       if (visit.deviceType) {
+//         if (!deviceTypeMap[visit.deviceType]) {
+//           deviceTypeMap[visit.deviceType] = { uniqueClicks: 0, uniqueUsers: new Set() };
+//         }
+//         deviceTypeMap[visit.deviceType].uniqueClicks += 1;
+//         deviceTypeMap[visit.deviceType].uniqueUsers.add(visit.userId);
+//       }
+//     });
+
+//     const deviceType = Object.entries(deviceTypeMap).map(([deviceName, data]) => ({
+//       deviceName,
+//       uniqueClicks: data.uniqueClicks,
+//       uniqueUsers: data.uniqueUsers.size,
+//     }));
+
+//     // Server OS Details using os module
+//     const serverDetails = {
+//       platform: os.platform(), // OS platform
+//       arch: os.arch(), // CPU architecture
+//       totalMemory: os.totalmem(), // Total memory
+//       freeMemory: os.freemem(), // Free memory
+//       uptime: os.uptime(), // Server uptime in seconds
+//       cpus: os.cpus().length, // Number of CPU cores
+//     };
+
+//     // Send the response
+//     return res.json({
+//       totalClicks,
+//       uniqueClicks,
+//       clicksByDate,
+//       osType,
+//       deviceType,
+//       serverDetails,
+//     });
+//   } catch (error) {
+//     console.error("Error in /analytics route:", error);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// }const redis = require("../path/to/redis");
 
 async function getAnalytics(req, res) {
   const { alias } = req.params;
 
   try {
-    // Find the URL with the given alias
+    // Check cache
+    const cachedData = await redis.get(`analytics:${alias}`);
+    if (cachedData) {
+      console.log("Cache hit for alias:", alias);
+      return res.json(JSON.parse(cachedData));
+    }
+
+    // Cache miss, fetch from DB
+    console.log("Cache miss for alias:", alias);
     const result = await URL.findOne({ customAlias: alias });
 
     if (!result) {
       return res.status(404).json({ message: "URL not found" });
     }
 
-    const visitHistory = result.visitHistory || []; // Default to an empty array if undefined
+    const visitHistory = result.visitHistory || [];
     const totalClicks = visitHistory.length;
+    const uniqueClicks = new Set(visitHistory.map((visit) => visit.userId).filter(Boolean)).size;
 
-    // Get unique clicks based on user identifiers
-    const uniqueClicks = new Set(
-      visitHistory.map((visit) => visit.userId).filter(Boolean) // Ensure userId is valid
-    ).size;
-
-    // Group clicks by date (recent 7 days)
     const today = new Date();
     const recent7Days = Array.from({ length: 7 }, (_, i) => {
       const date = new Date(today);
@@ -142,249 +218,351 @@ async function getAnalytics(req, res) {
     const clicksByDate = recent7Days.map((date) => ({
       date,
       clickCount: visitHistory.filter(
-        (visit) => visit.date && visit.date.startsWith(date) // Check if date exists and starts with current date
+        (visit) => visit.date && visit.date.startsWith(date)
       ).length,
     }));
 
-    // OS type analytics
-    const osTypeMap = {};
-    visitHistory.forEach((visit) => {
-      if (visit.osName) {
-        if (!osTypeMap[visit.osName]) {
-          osTypeMap[visit.osName] = { uniqueClicks: 0, uniqueUsers: new Set() };
-        }
-        osTypeMap[visit.osName].uniqueClicks += 1;
-        osTypeMap[visit.osName].uniqueUsers.add(visit.userId);
-      }
-    });
+    const osType = calculateOsTypeAnalytics(visitHistory);
+    const deviceType = calculateDeviceTypeAnalytics(visitHistory);
 
-    const osType = Object.entries(osTypeMap).map(([osName, data]) => ({
-      osName,
-      uniqueClicks: data.uniqueClicks,
-      uniqueUsers: data.uniqueUsers.size,
-    }));
+    const serverDetails = getServerDetails();
 
-    // Device type analytics
-    const deviceTypeMap = {};
-    visitHistory.forEach((visit) => {
-      if (visit.deviceType) {
-        if (!deviceTypeMap[visit.deviceType]) {
-          deviceTypeMap[visit.deviceType] = { uniqueClicks: 0, uniqueUsers: new Set() };
-        }
-        deviceTypeMap[visit.deviceType].uniqueClicks += 1;
-        deviceTypeMap[visit.deviceType].uniqueUsers.add(visit.userId);
-      }
-    });
-
-    const deviceType = Object.entries(deviceTypeMap).map(([deviceName, data]) => ({
-      deviceName,
-      uniqueClicks: data.uniqueClicks,
-      uniqueUsers: data.uniqueUsers.size,
-    }));
-
-    // Server OS Details using os module
-    const serverDetails = {
-      platform: os.platform(), // OS platform
-      arch: os.arch(), // CPU architecture
-      totalMemory: os.totalmem(), // Total memory
-      freeMemory: os.freemem(), // Free memory
-      uptime: os.uptime(), // Server uptime in seconds
-      cpus: os.cpus().length, // Number of CPU cores
-    };
-
-    // Send the response
-    return res.json({
+    const response = {
       totalClicks,
       uniqueClicks,
       clicksByDate,
       osType,
       deviceType,
       serverDetails,
-    });
+    };
+
+    // Cache response
+    await redis.set(`analytics:${alias}`, JSON.stringify(response), "EX", 3600);
+
+    return res.json(response);
   } catch (error) {
     console.error("Error in /analytics route:", error);
     res.status(500).json({ error: "Server error" });
   }
 }
 
+function calculateOsTypeAnalytics(visitHistory) {
+  const osTypeMap = {};
+  visitHistory.forEach((visit) => {
+    if (visit.osName) {
+      if (!osTypeMap[visit.osName]) {
+        osTypeMap[visit.osName] = { uniqueClicks: 0, uniqueUsers: new Set() };
+      }
+      osTypeMap[visit.osName].uniqueClicks += 1;
+      osTypeMap[visit.osName].uniqueUsers.add(visit.userId);
+    }
+  });
+  return Object.entries(osTypeMap).map(([osName, data]) => ({
+    osName,
+    uniqueClicks: data.uniqueClicks,
+    uniqueUsers: data.uniqueUsers.size,
+  }));
+}
+
+function calculateDeviceTypeAnalytics(visitHistory) {
+  const deviceTypeMap = {};
+  visitHistory.forEach((visit) => {
+    if (visit.deviceType) {
+      if (!deviceTypeMap[visit.deviceType]) {
+        deviceTypeMap[visit.deviceType] = { uniqueClicks: 0, uniqueUsers: new Set() };
+      }
+      deviceTypeMap[visit.deviceType].uniqueClicks += 1;
+      deviceTypeMap[visit.deviceType].uniqueUsers.add(visit.userId);
+    }
+  });
+  return Object.entries(deviceTypeMap).map(([deviceName, data]) => ({
+    deviceName,
+    uniqueClicks: data.uniqueClicks,
+    uniqueUsers: data.uniqueUsers.size,
+  }));
+}
+
+function getServerDetails() {
+  const os = require("os");
+  return {
+    platform: os.platform(),
+    arch: os.arch(),
+    totalMemory: os.totalmem(),
+    freeMemory: os.freemem(),
+    uptime: os.uptime(),
+    cpus: os.cpus().length,
+  };
+}
 
 
 
+// async function getTopicBasedAnalytics(req, res) {
+//   const { topic } = req.params;
+
+//   try {
+//     // Fetch all URLs matching the topic
+//     const urls = await URL.find({ topic });
+
+//     if (!urls || urls.length === 0) {
+//       return res.status(404).json({ message: "No URLs found for this topic" });
+//     }
+
+//     // Prepare analytics for each URL under the topic
+//     const analytics = urls.map((url) => {
+//       const visitHistory = url.visitHistory || []; // Default to an empty array if undefined
+//       const totalClicks = visitHistory.length;
+//       const uniqueClicks = new Set(
+//         visitHistory.map((visit) => visit.userId).filter(Boolean) // Ensure userId is valid
+//       ).size;
+//       const clicksByDate = visitHistory.reduce((acc, visit) => {
+//         const date = new Date(visit.timestamp).toISOString().split("T")[0]; // Format as YYYY-MM-DD
+//         acc[date] = (acc[date] || 0) + 1;
+//         return acc;
+//       }, {});
+//       const osType = visitHistory.reduce((acc, visit) => {
+//         const os = visit.os || "Unknown";
+//         acc[os] = (acc[os] || 0) + 1;
+//         return acc;
+//       }, {});
+//       const deviceType = visitHistory.reduce((acc, visit) => {
+//         const device = visit.deviceType || "Unknown";
+//         acc[device] = (acc[device] || 0) + 1;
+//         return acc;
+//       }, {});
+
+//       return {
+//         url: url.shortenedURL,
+//         totalClicks,
+//         uniqueClicks,
+//         clicksByDate,
+//         osType,
+//         deviceType,
+//       };
+//     });
+
+//     // Add server details using os module
+//     const serverDetails = {
+//       platform: os.platform(), // OS platform (e.g., 'linux', 'darwin', 'win32')
+//       architecture: os.arch(), // CPU architecture (e.g., 'x64', 'arm')
+//       cpuCount: os.cpus().length, // Number of CPU cores
+//       totalMemory: os.totalmem(), // Total memory in bytes
+//       freeMemory: os.freemem(), // Free memory in bytes
+//       uptime: os.uptime(), // Server uptime in seconds
+//     };
+
+//     // Respond with the analytics data and server details
+//     return res.json({
+//       topic,
+//       urls: analytics,
+//       serverDetails, // Include server environment insights
+//     });
+//   } catch (error) {
+//     console.error("Error in /topic analytics route:", error);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// }
 async function getTopicBasedAnalytics(req, res) {
   const { topic } = req.params;
 
   try {
-    // Fetch all URLs matching the topic
+    // Check cache
+    const cachedData = await redis.get(`topicAnalytics:${topic}`);
+    if (cachedData) {
+      console.log("Cache hit for topic:", topic);
+      return res.json(JSON.parse(cachedData));
+    }
+
+    // Cache miss
+    console.log("Cache miss for topic:", topic);
     const urls = await URL.find({ topic });
 
     if (!urls || urls.length === 0) {
       return res.status(404).json({ message: "No URLs found for this topic" });
     }
 
-    // Prepare analytics for each URL under the topic
     const analytics = urls.map((url) => {
-      const visitHistory = url.visitHistory || []; // Default to an empty array if undefined
+      const visitHistory = url.visitHistory || [];
       const totalClicks = visitHistory.length;
-      const uniqueClicks = new Set(
-        visitHistory.map((visit) => visit.userId).filter(Boolean) // Ensure userId is valid
-      ).size;
-      const clicksByDate = visitHistory.reduce((acc, visit) => {
-        const date = new Date(visit.timestamp).toISOString().split("T")[0]; // Format as YYYY-MM-DD
-        acc[date] = (acc[date] || 0) + 1;
-        return acc;
-      }, {});
-      const osType = visitHistory.reduce((acc, visit) => {
-        const os = visit.os || "Unknown";
-        acc[os] = (acc[os] || 0) + 1;
-        return acc;
-      }, {});
-      const deviceType = visitHistory.reduce((acc, visit) => {
-        const device = visit.deviceType || "Unknown";
-        acc[device] = (acc[device] || 0) + 1;
-        return acc;
-      }, {});
+      const uniqueClicks = new Set(visitHistory.map((visit) => visit.userId).filter(Boolean)).size;
 
       return {
         url: url.shortenedURL,
         totalClicks,
         uniqueClicks,
-        clicksByDate,
-        osType,
-        deviceType,
+        clicksByDate: calculateClicksByDate(visitHistory),
+        osType: calculateOsTypeAnalytics(visitHistory),
+        deviceType: calculateDeviceTypeAnalytics(visitHistory),
       };
     });
 
-    // Add server details using os module
-    const serverDetails = {
-      platform: os.platform(), // OS platform (e.g., 'linux', 'darwin', 'win32')
-      architecture: os.arch(), // CPU architecture (e.g., 'x64', 'arm')
-      cpuCount: os.cpus().length, // Number of CPU cores
-      totalMemory: os.totalmem(), // Total memory in bytes
-      freeMemory: os.freemem(), // Free memory in bytes
-      uptime: os.uptime(), // Server uptime in seconds
-    };
+    const serverDetails = getServerDetails();
 
-    // Respond with the analytics data and server details
-    return res.json({
-      topic,
-      urls: analytics,
-      serverDetails, // Include server environment insights
-    });
+    const response = { topic, urls: analytics, serverDetails };
+
+    // Cache response
+    await redis.set(`topicAnalytics:${topic}`, JSON.stringify(response), "EX", 3600);
+
+    return res.json(response);
   } catch (error) {
     console.error("Error in /topic analytics route:", error);
     res.status(500).json({ error: "Server error" });
   }
 }
 
-async function getOverallAnalytics(req, res) {
-  try {
-    // Fetch all URLs
-    const urls = await URL.find({});
-    console.log("request received");
-    console.log(urls);
+function calculateClicksByDate(visitHistory) {
+  return visitHistory.reduce((acc, visit) => {
+    const date = new Date(visit.timestamp).toISOString().split("T")[0];
+    acc[date] = (acc[date] || 0) + 1;
+    return acc;
+  }, {});
+}
 
-    if (!urls || urls.length === 0) {
-      return res.status(404).json({ message: "Not found" });
+
+// async function getOverallAnalytics(req, res) {
+//   try {
+//     // Fetch all URLs
+//     const urls = await URL.find({});
+//     console.log("request received");
+//     console.log(urls);
+
+//     if (!urls || urls.length === 0) {
+//       return res.status(404).json({ message: "Not found" });
+//     }
+
+//     // Total number of URLs
+//     const totalUrls = urls.length;
+
+//     // Calculate total clicks and unique clicks across all URLs
+//     let totalClicks = 0;
+//     const uniqueUserSet = new Set();
+//     const clicksByDate = {};
+//     const osAnalytics = {};
+//     const deviceAnalytics = {};
+
+//     urls.forEach((url) => {
+//       const visitHistory = url.visitHistory || [];
+
+//       // Total clicks
+//       totalClicks += visitHistory.length;
+
+//       // Unique users
+//       visitHistory.forEach((visit) => {
+//         if (visit.userId) {
+//           uniqueUserSet.add(visit.userId);
+//         }
+
+//         // Group clicks by date
+//         const date = new Date(visit.timestamp).toISOString().split("T")[0];
+//         clicksByDate[date] = (clicksByDate[date] || 0) + 1;
+
+//         // OS Analytics
+//         const osName = visit.os || "Unknown";
+//         if (!osAnalytics[osName]) {
+//           osAnalytics[osName] = {
+//             osName,
+//             uniqueClicks: 0,
+//             uniqueUsers: new Set(),
+//           };
+//         }
+//         osAnalytics[osName].uniqueClicks += 1;
+//         if (visit.userId) {
+//           osAnalytics[osName].uniqueUsers.add(visit.userId);
+//         }
+
+//         // Device Analytics
+//         const deviceName = visit.deviceType || "Unknown";
+//         if (!deviceAnalytics[deviceName]) {
+//           deviceAnalytics[deviceName] = {
+//             deviceName,
+//             uniqueClicks: 0,
+//             uniqueUsers: new Set(),
+//           };
+//         }
+//         deviceAnalytics[deviceName].uniqueClicks += 1;
+//         if (visit.userId) {
+//           deviceAnalytics[deviceName].uniqueUsers.add(visit.userId);
+//         }
+//       });
+//     });
+
+//     // Add server details using os module
+//     const serverDetails = {
+//       platform: os.platform(), // OS platform (e.g., 'linux', 'darwin', 'win32')
+//       architecture: os.arch(), // CPU architecture (e.g., 'x64', 'arm')
+//       cpuCount: os.cpus().length, // Number of CPU cores
+//       totalMemory: os.totalmem(), // Total memory in bytes
+//       freeMemory: os.freemem(), // Free memory in bytes
+//       uptime: os.uptime(), // Server uptime in seconds
+//     };
+
+//     // Prepare the response
+//     const response = {
+//       totalUrls,
+//       totalClicks,
+//       uniqueClicks: uniqueUserSet.size,
+//       clicksByDate: Object.entries(clicksByDate).map(([date, count]) => ({
+//         date,
+//         totalClicks: count,
+//       })),
+//       osType: Object.values(osAnalytics).map(
+//         ({ osName, uniqueClicks, uniqueUsers }) => ({
+//           osName,
+//           uniqueClicks,
+//           uniqueUsers: uniqueUsers.size,
+//         })
+//       ),
+//       deviceType: Object.values(deviceAnalytics).map(
+//         ({ deviceName, uniqueClicks, uniqueUsers }) => ({
+//           deviceName,
+//           uniqueClicks,
+//           uniqueUsers: uniqueUsers.size,
+//         })
+//       ),
+//       serverDetails, // Include server details
+//     };
+
+//     return res.json(response);
+//   } catch (error) {
+//     console.error("Error in getting overall analytics:", error);
+//     return res.status(500).json({ error: "Server error" });
+//   }
+// }
+async function getOverallAnalytics(req, res) {
+  const cacheKey = "overallAnalytics";
+
+  try {
+    // Check cache
+    const cachedData = await redis.get(cacheKey);
+    if (cachedData) {
+      console.log("Cache hit for overall analytics");
+      return res.json(JSON.parse(cachedData));
     }
 
-    // Total number of URLs
-    const totalUrls = urls.length;
+    console.log("Cache miss for overall analytics");
+    const urls = await URL.find({});
+    if (!urls || urls.length === 0) {
+      return res.status(404).json({ message: "No data found" });
+    }
 
-    // Calculate total clicks and unique clicks across all URLs
-    let totalClicks = 0;
-    const uniqueUserSet = new Set();
-    const clicksByDate = {};
-    const osAnalytics = {};
-    const deviceAnalytics = {};
+    const totalClicks = urls.reduce((sum, url) => sum + (url.visitHistory || []).length, 0);
+    const uniqueUsers = new Set(urls.flatMap((url) => url.visitHistory.map((visit) => visit.userId)));
 
-    urls.forEach((url) => {
-      const visitHistory = url.visitHistory || [];
-
-      // Total clicks
-      totalClicks += visitHistory.length;
-
-      // Unique users
-      visitHistory.forEach((visit) => {
-        if (visit.userId) {
-          uniqueUserSet.add(visit.userId);
-        }
-
-        // Group clicks by date
-        const date = new Date(visit.timestamp).toISOString().split("T")[0];
-        clicksByDate[date] = (clicksByDate[date] || 0) + 1;
-
-        // OS Analytics
-        const osName = visit.os || "Unknown";
-        if (!osAnalytics[osName]) {
-          osAnalytics[osName] = {
-            osName,
-            uniqueClicks: 0,
-            uniqueUsers: new Set(),
-          };
-        }
-        osAnalytics[osName].uniqueClicks += 1;
-        if (visit.userId) {
-          osAnalytics[osName].uniqueUsers.add(visit.userId);
-        }
-
-        // Device Analytics
-        const deviceName = visit.deviceType || "Unknown";
-        if (!deviceAnalytics[deviceName]) {
-          deviceAnalytics[deviceName] = {
-            deviceName,
-            uniqueClicks: 0,
-            uniqueUsers: new Set(),
-          };
-        }
-        deviceAnalytics[deviceName].uniqueClicks += 1;
-        if (visit.userId) {
-          deviceAnalytics[deviceName].uniqueUsers.add(visit.userId);
-        }
-      });
-    });
-
-    // Add server details using os module
-    const serverDetails = {
-      platform: os.platform(), // OS platform (e.g., 'linux', 'darwin', 'win32')
-      architecture: os.arch(), // CPU architecture (e.g., 'x64', 'arm')
-      cpuCount: os.cpus().length, // Number of CPU cores
-      totalMemory: os.totalmem(), // Total memory in bytes
-      freeMemory: os.freemem(), // Free memory in bytes
-      uptime: os.uptime(), // Server uptime in seconds
-    };
-
-    // Prepare the response
     const response = {
-      totalUrls,
       totalClicks,
-      uniqueClicks: uniqueUserSet.size,
-      clicksByDate: Object.entries(clicksByDate).map(([date, count]) => ({
-        date,
-        totalClicks: count,
-      })),
-      osType: Object.values(osAnalytics).map(
-        ({ osName, uniqueClicks, uniqueUsers }) => ({
-          osName,
-          uniqueClicks,
-          uniqueUsers: uniqueUsers.size,
-        })
-      ),
-      deviceType: Object.values(deviceAnalytics).map(
-        ({ deviceName, uniqueClicks, uniqueUsers }) => ({
-          deviceName,
-          uniqueClicks,
-          uniqueUsers: uniqueUsers.size,
-        })
-      ),
-      serverDetails, // Include server details
+      uniqueUsers: uniqueUsers.size,
+      serverDetails: getServerDetails(),
     };
+
+    // Cache response
+    await redis.set(cacheKey, JSON.stringify(response), "EX", 3600);
 
     return res.json(response);
   } catch (error) {
-    console.error("Error in getting overall analytics:", error);
-    return res.status(500).json({ error: "Server error" });
+    console.error("Error in overall analytics:", error);
+    res.status(500).json({ error: "Server error" });
   }
 }
+
 
 module.exports = {
   generateNewUrl,

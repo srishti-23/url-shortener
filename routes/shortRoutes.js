@@ -54,9 +54,7 @@ const limiter = rateLimit({
 // });
 
 // Analytics Route
-// router.route("/shorten").post(limiter,  ensureAuthenticated,generateNewUrl)
-router.route("/shorten").post(ensureAuthenticated,generateNewUrl)
-
+router.route("/shorten").post(limiter,  ensureAuthenticated,generateNewUrl)
 router.get("/analytics/:alias", ensureAuthenticated, getAnalytics); 
 router.get("/analytics/topic/:topic", ensureAuthenticated, getTopicBasedAnalytics); 
 router.get("/analytic/overall", ensureAuthenticated, getOverallAnalytics); 

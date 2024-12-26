@@ -23,7 +23,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      maxAge: 1000 * 60 * 60 * 24, // 1 da
+      maxAge: 1000 * 60 * 60 * 24, // 1 day
     },
   })
 );
@@ -33,9 +33,9 @@ app.use("/", authRoutes);
 app.use("/api", urlRouter);
 
 connectDB();
-
+if (require.main === module) {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
-});
+})};
