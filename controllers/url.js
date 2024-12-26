@@ -82,13 +82,17 @@ async function redirectShortUrl(req, res) {
     await result.save();
 
     console.log("Updated totalClicks:", result.totalClicks);
-    await redis.set(shortUrl, urlData.longUrl, "EX", 3600);
+
+    // Corrected Redis set with result.longUrl
+    await redis.set(customAlias, result.longUrl, "EX", 3600);
+    
     return res.redirect(result.longUrl);
   } catch (error) {
     console.error("Error while searching for alias:", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 }
+
 async function getAnalytics(req, res) {
   const { alias } = req.params;
 
