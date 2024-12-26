@@ -1,9 +1,8 @@
 // Ensure generateNewUrl and getAnalytics are defined and exported
 const URL = require("../models/url");
 const userAgent = require("useragent");
-const os= require("os")
-const redis= require('../config/redis')
-
+const os = require("os");
+const redis = require("../config/redis");
 
 async function generateNewUrl(req, res) {
   const { nanoid } = await import("nanoid");
@@ -83,113 +82,17 @@ async function redirectShortUrl(req, res) {
     await result.save();
 
     console.log("Updated totalClicks:", result.totalClicks);
-    await redis.set(shortUrl, urlData.longUrl, "EX", 3600)
+    await redis.set(shortUrl, urlData.longUrl, "EX", 3600);
     return res.redirect(result.longUrl);
   } catch (error) {
     console.error("Error while searching for alias:", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 }
-// async function getAnalytics(req, res) {
-//   const { alias } = req.params;
-
-//   try {
-//     // Find the URL with the given alias
-//     const result = await URL.findOne({ customAlias: alias });
-
-//     if (!result) {
-//       return res.status(404).json({ message: "URL not found" });
-//     }
-
-//     const visitHistory = result.visitHistory || []; 
-//     const totalClicks = visitHistory.length;
-
-   
-//     const uniqueClicks = new Set(
-//       visitHistory.map((visit) => visit.userId).filter(Boolean) 
-//     ).size;
-
-  
-//     const today = new Date();
-//     const recent7Days = Array.from({ length: 7 }, (_, i) => {
-//       const date = new Date(today);
-//       date.setDate(today.getDate() - i);
-//       return date.toISOString().split("T")[0];
-//     });
-
-//     const clicksByDate = recent7Days.map((date) => ({
-//       date,
-//       clickCount: visitHistory.filter(
-//         (visit) => visit.date && visit.date.startsWith(date) 
-//       ).length,
-//     }));
-
-   
-//     const osTypeMap = {};
-//     visitHistory.forEach((visit) => {
-//       if (visit.osName) {
-//         if (!osTypeMap[visit.osName]) {
-//           osTypeMap[visit.osName] = { uniqueClicks: 0, uniqueUsers: new Set() };
-//         }
-//         osTypeMap[visit.osName].uniqueClicks += 1;
-//         osTypeMap[visit.osName].uniqueUsers.add(visit.userId);
-//       }
-//     });
-
-//     const osType = Object.entries(osTypeMap).map(([osName, data]) => ({
-//       osName,
-//       uniqueClicks: data.uniqueClicks,
-//       uniqueUsers: data.uniqueUsers.size,
-//     }));
-
-//     // Device type analytics
-//     const deviceTypeMap = {};
-//     visitHistory.forEach((visit) => {
-//       if (visit.deviceType) {
-//         if (!deviceTypeMap[visit.deviceType]) {
-//           deviceTypeMap[visit.deviceType] = { uniqueClicks: 0, uniqueUsers: new Set() };
-//         }
-//         deviceTypeMap[visit.deviceType].uniqueClicks += 1;
-//         deviceTypeMap[visit.deviceType].uniqueUsers.add(visit.userId);
-//       }
-//     });
-
-//     const deviceType = Object.entries(deviceTypeMap).map(([deviceName, data]) => ({
-//       deviceName,
-//       uniqueClicks: data.uniqueClicks,
-//       uniqueUsers: data.uniqueUsers.size,
-//     }));
-
-//     // Server OS Details using os module
-//     const serverDetails = {
-//       platform: os.platform(), // OS platform
-//       arch: os.arch(), // CPU architecture
-//       totalMemory: os.totalmem(), // Total memory
-//       freeMemory: os.freemem(), // Free memory
-//       uptime: os.uptime(), // Server uptime in seconds
-//       cpus: os.cpus().length, // Number of CPU cores
-//     };
-
-//     // Send the response
-//     return res.json({
-//       totalClicks,
-//       uniqueClicks,
-//       clicksByDate,
-//       osType,
-//       deviceType,
-//       serverDetails,
-//     });
-//   } catch (error) {
-//     console.error("Error in /analytics route:", error);
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }const redis = require("../path/to/redis");
-
 async function getAnalytics(req, res) {
   const { alias } = req.params;
 
   try {
-    // Check cache
     const cachedData = await redis.get(`analytics:${alias}`);
     if (cachedData) {
       console.log("Cache hit for alias:", alias);
@@ -206,7 +109,9 @@ async function getAnalytics(req, res) {
 
     const visitHistory = result.visitHistory || [];
     const totalClicks = visitHistory.length;
-    const uniqueClicks = new Set(visitHistory.map((visit) => visit.userId).filter(Boolean)).size;
+    const uniqueClicks = new Set(
+      visitHistory.map((visit) => visit.userId).filter(Boolean)
+    ).size;
 
     const today = new Date();
     const recent7Days = Array.from({ length: 7 }, (_, i) => {
@@ -245,7 +150,6 @@ async function getAnalytics(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
-
 function calculateOsTypeAnalytics(visitHistory) {
   const osTypeMap = {};
   visitHistory.forEach((visit) => {
@@ -263,13 +167,15 @@ function calculateOsTypeAnalytics(visitHistory) {
     uniqueUsers: data.uniqueUsers.size,
   }));
 }
-
 function calculateDeviceTypeAnalytics(visitHistory) {
   const deviceTypeMap = {};
   visitHistory.forEach((visit) => {
     if (visit.deviceType) {
       if (!deviceTypeMap[visit.deviceType]) {
-        deviceTypeMap[visit.deviceType] = { uniqueClicks: 0, uniqueUsers: new Set() };
+        deviceTypeMap[visit.deviceType] = {
+          uniqueClicks: 0,
+          uniqueUsers: new Set(),
+        };
       }
       deviceTypeMap[visit.deviceType].uniqueClicks += 1;
       deviceTypeMap[visit.deviceType].uniqueUsers.add(visit.userId);
@@ -281,7 +187,6 @@ function calculateDeviceTypeAnalytics(visitHistory) {
     uniqueUsers: data.uniqueUsers.size,
   }));
 }
-
 function getServerDetails() {
   const os = require("os");
   return {
@@ -293,74 +198,6 @@ function getServerDetails() {
     cpus: os.cpus().length,
   };
 }
-
-
-
-// async function getTopicBasedAnalytics(req, res) {
-//   const { topic } = req.params;
-
-//   try {
-//     // Fetch all URLs matching the topic
-//     const urls = await URL.find({ topic });
-
-//     if (!urls || urls.length === 0) {
-//       return res.status(404).json({ message: "No URLs found for this topic" });
-//     }
-
-//     // Prepare analytics for each URL under the topic
-//     const analytics = urls.map((url) => {
-//       const visitHistory = url.visitHistory || []; // Default to an empty array if undefined
-//       const totalClicks = visitHistory.length;
-//       const uniqueClicks = new Set(
-//         visitHistory.map((visit) => visit.userId).filter(Boolean) // Ensure userId is valid
-//       ).size;
-//       const clicksByDate = visitHistory.reduce((acc, visit) => {
-//         const date = new Date(visit.timestamp).toISOString().split("T")[0]; // Format as YYYY-MM-DD
-//         acc[date] = (acc[date] || 0) + 1;
-//         return acc;
-//       }, {});
-//       const osType = visitHistory.reduce((acc, visit) => {
-//         const os = visit.os || "Unknown";
-//         acc[os] = (acc[os] || 0) + 1;
-//         return acc;
-//       }, {});
-//       const deviceType = visitHistory.reduce((acc, visit) => {
-//         const device = visit.deviceType || "Unknown";
-//         acc[device] = (acc[device] || 0) + 1;
-//         return acc;
-//       }, {});
-
-//       return {
-//         url: url.shortenedURL,
-//         totalClicks,
-//         uniqueClicks,
-//         clicksByDate,
-//         osType,
-//         deviceType,
-//       };
-//     });
-
-//     // Add server details using os module
-//     const serverDetails = {
-//       platform: os.platform(), // OS platform (e.g., 'linux', 'darwin', 'win32')
-//       architecture: os.arch(), // CPU architecture (e.g., 'x64', 'arm')
-//       cpuCount: os.cpus().length, // Number of CPU cores
-//       totalMemory: os.totalmem(), // Total memory in bytes
-//       freeMemory: os.freemem(), // Free memory in bytes
-//       uptime: os.uptime(), // Server uptime in seconds
-//     };
-
-//     // Respond with the analytics data and server details
-//     return res.json({
-//       topic,
-//       urls: analytics,
-//       serverDetails, // Include server environment insights
-//     });
-//   } catch (error) {
-//     console.error("Error in /topic analytics route:", error);
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }
 async function getTopicBasedAnalytics(req, res) {
   const { topic } = req.params;
 
@@ -383,7 +220,9 @@ async function getTopicBasedAnalytics(req, res) {
     const analytics = urls.map((url) => {
       const visitHistory = url.visitHistory || [];
       const totalClicks = visitHistory.length;
-      const uniqueClicks = new Set(visitHistory.map((visit) => visit.userId).filter(Boolean)).size;
+      const uniqueClicks = new Set(
+        visitHistory.map((visit) => visit.userId).filter(Boolean)
+      ).size;
 
       return {
         url: url.shortenedURL,
@@ -400,7 +239,12 @@ async function getTopicBasedAnalytics(req, res) {
     const response = { topic, urls: analytics, serverDetails };
 
     // Cache response
-    await redis.set(`topicAnalytics:${topic}`, JSON.stringify(response), "EX", 3600);
+    await redis.set(
+      `topicAnalytics:${topic}`,
+      JSON.stringify(response),
+      "EX",
+      3600
+    );
 
     return res.json(response);
   } catch (error) {
@@ -408,7 +252,6 @@ async function getTopicBasedAnalytics(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
-
 function calculateClicksByDate(visitHistory) {
   return visitHistory.reduce((acc, visit) => {
     const date = new Date(visit.timestamp).toISOString().split("T")[0];
@@ -417,116 +260,6 @@ function calculateClicksByDate(visitHistory) {
   }, {});
 }
 
-
-// async function getOverallAnalytics(req, res) {
-//   try {
-//     // Fetch all URLs
-//     const urls = await URL.find({});
-//     console.log("request received");
-//     console.log(urls);
-
-//     if (!urls || urls.length === 0) {
-//       return res.status(404).json({ message: "Not found" });
-//     }
-
-//     // Total number of URLs
-//     const totalUrls = urls.length;
-
-//     // Calculate total clicks and unique clicks across all URLs
-//     let totalClicks = 0;
-//     const uniqueUserSet = new Set();
-//     const clicksByDate = {};
-//     const osAnalytics = {};
-//     const deviceAnalytics = {};
-
-//     urls.forEach((url) => {
-//       const visitHistory = url.visitHistory || [];
-
-//       // Total clicks
-//       totalClicks += visitHistory.length;
-
-//       // Unique users
-//       visitHistory.forEach((visit) => {
-//         if (visit.userId) {
-//           uniqueUserSet.add(visit.userId);
-//         }
-
-//         // Group clicks by date
-//         const date = new Date(visit.timestamp).toISOString().split("T")[0];
-//         clicksByDate[date] = (clicksByDate[date] || 0) + 1;
-
-//         // OS Analytics
-//         const osName = visit.os || "Unknown";
-//         if (!osAnalytics[osName]) {
-//           osAnalytics[osName] = {
-//             osName,
-//             uniqueClicks: 0,
-//             uniqueUsers: new Set(),
-//           };
-//         }
-//         osAnalytics[osName].uniqueClicks += 1;
-//         if (visit.userId) {
-//           osAnalytics[osName].uniqueUsers.add(visit.userId);
-//         }
-
-//         // Device Analytics
-//         const deviceName = visit.deviceType || "Unknown";
-//         if (!deviceAnalytics[deviceName]) {
-//           deviceAnalytics[deviceName] = {
-//             deviceName,
-//             uniqueClicks: 0,
-//             uniqueUsers: new Set(),
-//           };
-//         }
-//         deviceAnalytics[deviceName].uniqueClicks += 1;
-//         if (visit.userId) {
-//           deviceAnalytics[deviceName].uniqueUsers.add(visit.userId);
-//         }
-//       });
-//     });
-
-//     // Add server details using os module
-//     const serverDetails = {
-//       platform: os.platform(), // OS platform (e.g., 'linux', 'darwin', 'win32')
-//       architecture: os.arch(), // CPU architecture (e.g., 'x64', 'arm')
-//       cpuCount: os.cpus().length, // Number of CPU cores
-//       totalMemory: os.totalmem(), // Total memory in bytes
-//       freeMemory: os.freemem(), // Free memory in bytes
-//       uptime: os.uptime(), // Server uptime in seconds
-//     };
-
-//     // Prepare the response
-//     const response = {
-//       totalUrls,
-//       totalClicks,
-//       uniqueClicks: uniqueUserSet.size,
-//       clicksByDate: Object.entries(clicksByDate).map(([date, count]) => ({
-//         date,
-//         totalClicks: count,
-//       })),
-//       osType: Object.values(osAnalytics).map(
-//         ({ osName, uniqueClicks, uniqueUsers }) => ({
-//           osName,
-//           uniqueClicks,
-//           uniqueUsers: uniqueUsers.size,
-//         })
-//       ),
-//       deviceType: Object.values(deviceAnalytics).map(
-//         ({ deviceName, uniqueClicks, uniqueUsers }) => ({
-//           deviceName,
-//           uniqueClicks,
-//           uniqueUsers: uniqueUsers.size,
-//         })
-//       ),
-//       serverDetails, // Include server details
-//     };
-
-//     return res.json(response);
-//   } catch (error) {
-//     console.error("Error in getting overall analytics:", error);
-//     return res.status(500).json({ error: "Server error" });
-//   }
-// }
 async function getOverallAnalytics(req, res) {
   const cacheKey = "overallAnalytics";
 
@@ -544,8 +277,13 @@ async function getOverallAnalytics(req, res) {
       return res.status(404).json({ message: "No data found" });
     }
 
-    const totalClicks = urls.reduce((sum, url) => sum + (url.visitHistory || []).length, 0);
-    const uniqueUsers = new Set(urls.flatMap((url) => url.visitHistory.map((visit) => visit.userId)));
+    const totalClicks = urls.reduce(
+      (sum, url) => sum + (url.visitHistory || []).length,
+      0
+    );
+    const uniqueUsers = new Set(
+      urls.flatMap((url) => url.visitHistory.map((visit) => visit.userId))
+    );
 
     const response = {
       totalClicks,
@@ -562,7 +300,6 @@ async function getOverallAnalytics(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
-
 
 module.exports = {
   generateNewUrl,
